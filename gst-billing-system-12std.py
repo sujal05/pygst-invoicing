@@ -132,7 +132,7 @@ def item_list():
     else:
         pta.field_names = ["ID","Name","MODEL","Sr","Price","GST"]
         for row in records:
-            pta.add_row([row[0],row[1],truncate(row[2],13),truncate(row[3],18),row[4],str(row[5])+'%'])
+            pta.add_row([row[0],truncate(row[1],28),truncate(row[2],13),truncate(row[3],18),row[4],str(row[5])+'%'])
         print(pta)
     print('\nPress any key to continue.....')
     wait = input()
@@ -257,6 +257,27 @@ def bill_information():
     return
 
 
+#  function name    : amount_collected
+#  purpose          : Function to display amount collected between two dates
+def amount_collected():
+    clear()
+    start_date = input('Enter start Date (yyyy-mm-dd) :')
+    end_date   = input('Enter End   Date (yyyy-mm-dd) :')
+    clear()
+    print('Amount collected between: {} and {}'.format(start_date,end_date))
+    print('-'*30)
+    query = f'''select p.price,p.gstrate,i.qty from invoice i,items p where i.item_id = p.id and date between '{start_date}' and '{end_date}';'''
+    cursor.execute(query)
+    result = cursor.fetchall()
+    total = 0
+    for row in result:
+        CGST, SGST, amount = calc_gst(row[0],row[1],row[2])
+        total+=amount
+    print(f"Total amount collected: ₹{total}")
+    print('\nPress any key to continue.....')
+    wait= input()
+
+
 #### search products with name
 def search_item():
     pta = PrettyTable()
@@ -325,8 +346,9 @@ def report_menu():
         print('1.   Item List')
         print('2.   Invoices Between Date')
         print('3.   Bill information')
-        print('4.   Back to main menu')
-        choice = int(input('\n\nEnter your choice (1..4): '))
+        print('4.   Amount Collected b/w')
+        print('5.   Back to main menu')
+        choice = int(input('\n\nEnter your choice (1..5): '))
         if choice==1:
             item_list()
         if choice==2:
@@ -334,6 +356,8 @@ def report_menu():
         if choice==3:
             bill_information()
         if choice==4:
+            amount_collected()
+        if choice==5:
             break
 
 
