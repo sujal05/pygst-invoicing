@@ -1,21 +1,24 @@
-import mysql.connector, decimal
+'''program developed and tested on MariaDB server (a fork of MySQL)'''
+import mysql.connector          # connect python with MySQL server
+from prettytable import PrettyTable         # generate and customize indented tables
 
 # supply appropriate connection parameters to connect to your MySQL DB
 connection = mysql.connector.connect(host='localhost',database='gstin',user='sujal',password='sujal')
 
+# initialize cursor to perform DB operations --> use buffer to pre-fetchall
 cursor = connection.cursor(buffered=True)
 
-# create database tables
+# create necessary database tables
 try:
     c_table = '''create table if not exists customers(id int unsigned primary key auto_increment, party varchar(100) not null, address varchar(400) not null, mobile bigint(11) unsigned zerofill, email varchar(100) default NULL)'''
     
     p_table = '''create table if not exists items
     (id int unsigned primary key auto_increment, name varchar(225) not null default 'Plug', model varchar(255) default 'N/A', serial varchar(255) default 'N/A', price decimal(11,2) unsigned not null default 0, gstrate decimal(4,2) unsigned not null default 0)''' # --- > total 6
 
-    i_table = '''create table if not exists invoice (id int unsigned primary key auto_increment, date date not null, party_id int unsigned not null, item_id int unsigned not null, qty int(6) unsigned not null default 1)'''
+    i_table = '''create table if not exists invoice (aid int primary key auto_increment, id int unsigned not null, date date not null, party_id int unsigned not null, item_id int unsigned not null, qty int(6) unsigned not null default 1)'''
 
-    # party -> customer_id
-    # item  -> product_id
+    # party -> party_id
+    # item  -> item_id
   
     cursor.execute(c_table)
     cursor.execute(p_table)
@@ -24,138 +27,139 @@ try:
 except mysql.connector.Error as error:
     print("Failed to create table in MySQL: {}".format(error))
 
+# maintain a clean viewport
 def clear():
     for _ in range(65):
         print()
 
-'''
-def last_bill_no():
-    cursor.execute("SELECT inv FROM customers ORDER BY inv DESC LIMIT 1")
-    print(cursor.fetchone()[0], "is the draft invoice no.")
-'''
-
+# fetch last invoice id from DB
 def last_bill_no():
     cursor.execute('select max(id) from invoice')
     record = cursor.fetchone()
     return record
 
+def truncate(chr,len):
+        string = chr[:len] + (chr[len:] and '..')
+        return string
+
+# find items from ID --> used in billing()
 def find_item(no):
     cursor.execute('select * from items where id ={}'.format(no))
     record = cursor.fetchone()
     return record
 
+# collect and insert customer data to DB;
 def clients():
+    for i in range(1):
+        # inv = int(input("Draft Invoice No: "))
+        party = input("Party Name: ")
+        # date = input("Date of Invoice: ")
+        address = input("Client Address: ")
+        mobile = int(input("Client Mobile: "))
+        email = input("Email ID (optional): ")
+        c_query = f'''insert into customers (party,address,mobile,email) values('{party}','{address}',{mobile},'{email}')'''
+        cursor.execute(c_query)
+        
+        connection.commit()
     
-    # inv = int(input("Draft Invoice No: "))
-    party = input("Party Name: ")
-    # date = input("Date of Invoice: ")
-    address = input("Client Address: ")
-    mobile = int(input("Client Mobile: "))
-    email = input("Email ID (optional): ")
-    c_query = f'''insert into customers (party,address,mobile,email) values('{party}','{address}',{mobile},'{email}')'''
-    cursor.execute(c_query)
-    
-    connection.commit()
-    
-
-    # print(cursor.rowcount, "record(s) inserted.\n")
     return party, mobile
     
-
+# write GST formulas for CGST, SGST and total amount (inc. GST and qty)
 def calc_gst(p,rate,qty):
-    CGST = p*((rate/2)/100)
+    CGST = ((rate/2)/100)*(p*qty)
     SGST = CGST
-    amount = (p + CGST + SGST)*qty
+    SGST = round(SGST,2)
+    amount = ((p*qty) + CGST + SGST)
     amount = round(amount,2)
     return CGST, SGST, amount
 
-# def items():
-    # inv      = int(input("Add to Invoice no: "))
-    # prod     = input("Product Name: ")
 
-    # price    = float(input("Enter Price before GST: "))
- 
-
-    # p_query = f'''insert into products (inv, prod,model,serial,qty,price,calcrate,amount) values({inv},'{prod}','{model}','{serial}',{qty},{price},{calcrate},{amount})'''
-    # cursor.execute(p_query)
-    
-    # connection.commit()      
-    # print(cursor.rowcount, "record(s) inserted.")
-
-    # print()
-    # print('           INVOICE')
-    # print('-'*25)
-    # print('Selling Price(₹) :',price)
-    # print('CGST             :',CGST)
-    # print('SGST             :',SGST)
-    # print('Amount(₹)        :',amount)
-    # print('-'*25)
-    # print()
-
+ #  function name       : add_item
+ #  purpose             : add new products in DB
 def add_item():
     clear()
     print('Add New Item - Screen')
-    print('-'*100)
+    print('-'*30)
     name = input('Enter New Item Name: ')
     model    = input("Model No: ")
     serial   = input("Sr No. ")
     price = float(input("Enter Price before GST: "))
     gstrate = float(input("Rate of GST: "))
 
-    query = f'''select * from items where name like "%{name}%"'''
+    query = f'''SELECT * FROM items WHERE name LIKE "%{name}%"''' # LIKE --> used to query specified letters in 'name' column 
     cursor.execute(query)
     record=cursor.fetchone()
     if record==None:
         query = f'''insert into items(name,model,serial,price,gstrate) values("{name}","{model}","{serial}",{price},{gstrate});'''
         cursor.execute(query)
+        connection.commit()
         print('\n\nNew Item added successfully.....\nPress any key to continue....')
     else:
         print('\n\nItem Name already Exist.....\nPress any key to continue....')
     wait= input()
+
 
 #   function name       : modify_item
 #   purpose             : change item details in items table
 def modify_item():
     clear()
     print('Modify Item Details - Screen')
-    print('-'*100)
+    print('-'*30)
     item_id = int(input('Enter Product ID: '))
     item_name = input('New Product Name: ')
     item_price = float(input('New Price: '))
     model = input("New Model No.: ")
     serial = input("New Sr. no: ")
-    rate = float("New GST Rate: ")
-    query = f'''update items set name = "{item_name}", price ={item_price}, model = "{model}", serial = "{serial}",rate = {rate} where id={item_id}'''
+    rate = float(input("New GST Rate: "))
+    query = f'''update items set name = "{item_name}", price ={item_price}, model = "{model}", serial = "{serial}",gstrate = {rate} where id={item_id}'''
     cursor.execute(query)
-    print('\n\nRecord Updated Successfully............')
+    connection.commit()
+    print('\nRecord Updated Successfully............')
+
 
 #   function name           : item_list
-#   purpose                 : To display all the items in items tables
+#   purpose                 : To display all the items in items table
 def item_list():
+    pta = PrettyTable()
     clear()
     query="select * from items"
     cursor.execute(query)
     records = cursor.fetchall()
-    for row in records:
-        print(row)
+    n = cursor.rowcount         # count no. of rows in query
+    
+    if n<=0:
+        print("There are currently no items to list.")
+    else:
+        pta.field_names = ["ID","Name","MODEL","Sr","Price","GST"]
+        for row in records:
+            pta.add_row([row[0],row[1],truncate(row[2],13),truncate(row[3],18),row[4],str(row[5])+'%'])
+        print(pta)
     print('\nPress any key to continue.....')
     wait = input()
+    return              # empty return to end the function
 
+
+#   function name           : billing
+#   purpose                 : inserts transaction data into invoice table (qty,bill_no,date, etc.)
 def billing():
+    pta = PrettyTable()
     clear()
+
+    # store items data and qty in nested list
     items = []
+
     bill_no = last_bill_no()
     if bill_no[0]==None:
-        bill_no = 1001
+        bill_no = 1001          # start invoicing with no 1001
     else:
         bill_no = bill_no[0]+1
     
-    clients()
-    name,phone = clients()
-    party_id = cursor.execute("SELECT max(id) FROM customers;")
-    # name = input("Enter Party name: ")
-    # phone = input('Enter Phone no: ')
-    date = input("Bill date (YYYY-MM-DD): ")
+    name,phone = clients()          # call and assign function values to appropriate no. of variables
+    cursor.execute("SELECT max(id) FROM customers;")    # find last customer to later insert into invoice table for joining
+    party_id = cursor.fetchone()
+
+    date = input("Bill date (YYYY-MM-DD): ")            # input custom invoice date in allowed range
+
     while True:
         no = int(input("Enter Item no. (0 to stop): "))
         if no <=0:
@@ -170,83 +174,52 @@ def billing():
                 item.append(qty)
                 items.append(item)
 
-    
-    clear()
-    print('                     Company Name              ')
-    print('                     Gurugram, Harayana     ')
-    print('                     Phone: 099XXXXXXXX, Email: manager@company.in ')
-    print(f'Bill No :{bill_no}        Date :{date}')
-    print('-'*100)
-    print(f'Customer Name: {name}          Phone: {phone}')
-    print('-'*100)
-    print('Item Id       Item Name         MODEL        SERIAL      Price    GST     Qty          Amount ')
-    print('-'*100)
-    total = 0
-    CGST, SGST, amount = calc_gst(item[4],item[5],item[6])
-    for item in items:
-        print('{:<10d} {:25s} {:.2f} {:>10d}          {:>.2f} \
-            '.format(item[0],item[1],item[2],item[3],item[4],item[5],"CGST + SGST / ",CGST," + ",SGST,item[6],amount))
-        # total = total + (price*qty)
 
-        # gst = calc_gst(price,calcrate)
-        # CGST,SGST,amount = gst
-        # amount*=qty
+# print static invoice contents - company,gstin,phone,mail etc
+    clear()
+    print('             Company Name             ')
+    print('           Gurugram, Harayana            ')
+    print('       Phone: 099XXXXXXXX, Email: manager@company.in         ')
+    print('                 GSTIN: 07AEXXXXXXXXXXX\n')
+    print(f'Bill No :{bill_no}  |  Date :{date}')
+    print(f'Customer Name: {name}  |  Phone: {phone}')
+    total = 0
+    pta.field_names = ["Item ID","Product","MODEL","SERIAL","Price(₹)","Qty","GST","CGST/SGST","Amount(₹)"]
+    for item in items:
+        CGST, SGST, amount = calc_gst(item[4],item[5],item[6])
+        pta.add_row([item[0],item[1],item[2],item[3],item[4],item[6],str(item[5])+'%',str(CGST)+'/'+str(SGST),amount])
         
         total += amount
-    print('-'*100)
-    print(f'Total Payable amount: {total}')
+    print(pta)
+    print(f'Total Payable amount: ₹{total}')
     print('\nPress any key to continue........')
     
     #insert data into tables
-    # query = f'''insert into invoice(id,date,party_id,item_id,qty) values({bill_no},"{date}",{},{},{qty});'''
-    # cursor.execute(query)
     for item in items:
         query=f'''insert into invoice(id,date,party_id,item_id,qty) values({bill_no},"{date}",{party_id[0]},{item[0]},{item[6]});'''
         cursor.execute(query)
+        connection.commit()
     wait= input()
 
-# try:
-#     aborted = False
-#     while not aborted:
-#         clients()
-
-#         print("Proceeding towards Products Invoice...\n")
-
-#         items()
-#         abort = input("Do you want to continue?: ")
-#         if abort != chr(27):
-#             continue
-#         else:
-#             aborted = True
-#             print("DB updated;\n")
-#             break
-
-# except mysql.connector.Error as error:
-#     print("Failed to insert data: {}".format(error))
-# finally:
-#     if connection.is_connected():
-#         cursor.close()
-#         connection.close()
-#         print("Aborting....")
-#         print("MySQL now disconnected")
 
 #   function      : Date_wise_sell
 #   purpose       : Create a report on date wise sell or sell between two dates
 def date_wise_sell():
+    pta = PrettyTable()
     clear()
     print('Invoices Between Date -- Screen')
     print('-'*100)
     start_date = input('Enter Start Date (yyyy-mm-dd): ')
     end_date   = input('Enter End Date (yyyy-mm-dd): ')
-    query = f'''select invoice.id,invoice.date,party,mobile from invoice,customers where invoice.date between "{start_date}" and "{end_date}"'''
+    query = f'''select i.id,i.date,party,mobile from invoice i,customers c where i.date between "{start_date}" and "{end_date}" and i.party_id = c.id;'''
     cursor.execute(query)
     records = cursor.fetchall()
     clear()
-    print('Bill No       Customer Name         Phone No         Bill Date')
-    print('-'*100)
+    print(f'''--- Invoice(s) between {start_date} and {end_date} ---''')
+    pta.field_names = ["Invoice","Customer","Phone","Date"]
     for row in records:
-        print('{:10d} {:30s} {:20s} {}'.format(row[0],row[2],row[3],row[1]))
-    print('-'*100)
+        pta.add_row([row[0],row[2],row[3],row[1]])
+    print(pta)
     print('\n\nPress any key to continue....')
     wait= input()
 
@@ -254,9 +227,10 @@ def date_wise_sell():
 # function name        : bill information
 # purpose               : display details of any bill
 def bill_information():
+    pta = PrettyTable()
     clear()
     bill_no = input('Enter Invoice Number :')
-    query = f'''select i.id,c.name,c.mobile,i.date,i.item_id,i.qty,p.name,p.price from invoice i,customer c,items p \
+    query = f'''select i.id,c.party,c.id,c.mobile,i.date,i.item_id,p.name,p.model,p.serial,p.price,i.qty,p.gstrate from invoice i,customers c,items p \
            where i.party_id = c.id AND p.id= i.item_id AND \
            i.id ={bill_no};'''
     cursor.execute(query) 
@@ -264,55 +238,58 @@ def bill_information():
     n = cursor.rowcount
     clear()
     print("Invoice No :",bill_no)
-    print('-'*100)
+    print('-'*30)
     if n<=0:
         print('Invoice {} does not exist'.format(bill_no))
     else:
-        print('Customer Name: {}  Phone: {}'.format(records[0][1],records[0][2]))
-        print('Invoice Date : {}'.format(records[0][3]))
-        print('-'*100)
-        print('{:10s} {:30s} {:20s} {:10s} {:30s}'.format('ID','Item Name','Qty','Price','Amount'))
-        print('-'*100)
+        print('Customer Name: {}, {}  |  Phone: {}'.format(records[0][1],records[0][2],records[0][3]))
+        print('Invoice Date : {}'.format(records[0][4]))
+        pta.field_names = ["ID","Product","MODEL","SERIAL","Price(₹)","Qty","GST","CGST/SGST","Amount(₹)"]
+        total = 0
         for row in records:
-            print('{:<10d} {:30s} {:<20d} {:.2f} {:>.2f}'.format(row[4],row[6],row[5],row[7],row[5]*row[7]))
-        print('-'*100)
+            CGST, SGST, amount = calc_gst(row[9],row[11],row[10])
+            pta.add_row([row[5],row[6],row[7],row[8],row[9],row[10],str(row[11])+'%',str(CGST)+'/'+str(SGST),amount])
+            total+=amount
+        print(pta)
+        print(f'Total amount paid: ₹{total}')
     print('\nPress any key to continue....')
     wait = input()
+    return
 
 
-####
+#### search products with name
 def search_item():
+    pta = PrettyTable()
     clear()
     item_name =input('Search Item Name :')
-    sql =f'select * from items where item_name like "%{item_name}%";'
+    sql =f'select * from items where name like "%{item_name}%";'
     cursor.execute(sql)
     records = cursor.fetchall()
     clear()
-    print('Items with :',item_name)
-    print('-'*100)
-    print('{:10s} {:30s} {:20s} {} {}'.format('Item ID','Name','MODEL','Price','GST'))
-    print('-'*100)
+    print('Items with:',item_name)
+    print('-'*30)
+    pta.field_names = ["ID","Name","MODEL","SERIAL","Price","GST"]
     for row in records:
-        print('{:<10d} {:30s} {:.2f} {} {}'.format(row[0],row[1],row[2],row[4],row[5]))
-    print('-'*100)
+        pta.add_row([row[0],row[1],row[2],row[3],row[4],str(row[5])+'%'])
+    print(pta)
     print('\nPress any key to continue....')
     wait= input()
 
-#####
+
+#####   search for customers with name
 def search_customer():
+    pta = PrettyTable()
     clear()
-    cust_name =input('Search customer name :')
-    sql ='select * from customers where name like "%{}%";'.format(cust_name)
+    cust_name =input('Search customer name: ')
+    sql ='select * from customers where party like "%{}%";'.format(cust_name)
     cursor.execute(sql)
     records = cursor.fetchall()
     clear()
     print('Customer Names with :',cust_name)
-    print('-'*100)
-    print('{:10s} {:30s} {:20s} {:20s}'.format('Customer ID','Name','Phone','Email'))
-    print('-'*100)
+    pta.field_names = ["ID","Name","Address","Phone","Email"]
     for row in records:
-        print('{:<10d} {:30s} {:20s} {:20s}'.format(row[0],row[1],row[3],str(row[4])))
-    print('-'*100)
+        pta.add_row([row[0],row[1],truncate(row[2],28),row[3],row[4]])
+    print(pta)
     print('\nPress any key to continue....')
     wait= input()
 
@@ -322,7 +299,7 @@ def search_menu():
     while True:
         clear()
         print('      S E A R C H    M E N U ')
-        print('-'*100)
+        print('-'*30)
         print('1.   Item Name')
         print('2.   Customer information')
         print('3.   Bill information')
@@ -344,7 +321,7 @@ def report_menu():
     while True:
         clear()
         print('   R E P O R T   M E N U ')
-        print('-'*100)
+        print('-'*30)
         print('1.   Item List')
         print('2.   Invoices Between Date')
         print('3.   Bill information')
@@ -360,11 +337,13 @@ def report_menu():
             break
 
 
+#  function name        : main_menu
+#  purpose              : defines structure of program
 def main_menu():
     while True:
         clear()
         print('      M A I N   M E N U')
-        print('-'*100)
+        print('-'*30)
         print('1.   Add New Product')
         print('2.   Modify Inventory')
         print('3.   Billing')
@@ -385,7 +364,13 @@ def main_menu():
         if choice==6:
             break
 
-
+# allows program to run independently, checks if program is a module (doesn't runs modules);
 if __name__=="__main__":
     clear()
     main_menu()
+
+    if connection.is_connected():
+        cursor.close()          # closing cursor before terminating program
+        connection.close()      # finally close the connection to commit any unsaved changes
+        print("Querying data to server....")
+        print("MySQL now disconnected\nas there are no further processes.")
