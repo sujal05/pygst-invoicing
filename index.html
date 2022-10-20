@@ -35,7 +35,7 @@ try:
     p_table = '''create table if not exists items
     (id int unsigned primary key auto_increment, name varchar(225) not null default 'Plug', model varchar(255) default 'N/A', serial varchar(255) default 'N/A', price decimal(11,2) unsigned not null default 0, gstrate decimal(4,2) unsigned not null default 0)''' # --- > total 6
 
-    i_table = '''create table if not exists invoice (aid int primary key auto_increment, id int unsigned not null, date date not null, party_id int unsigned not null, item_id int unsigned not null, qty int(6) unsigned not null default 1)'''
+    i_table = '''create table if not exists invoice (aid int primary key auto_increment, id int unsigned not null, date date not null, party_id int unsigned not null, item_id int unsigned not null, qty int(6) unsigned not null default 1, foreign key (party_id) references customers(id), foreign key (item_id) references items(id));'''
 
     # party -> party_id
     # item  -> item_id
